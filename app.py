@@ -6,7 +6,7 @@ from wtforms.validators import DataRequired
 import configparser
 import requests
 from collections import defaultdict
-from datetime import datetime
+from datetime import datetime, timedelta
 
 
 app = Flask(__name__)
@@ -23,14 +23,13 @@ login_manager.init_app(app)
 login_manager.login_view = 'login'
 
 app.config['SECRET_KEY'] = 'some_random_secret_key'
+app.config['PERMANENT_SESSION_LIFETIME'] = timedelta(minutes=5)
 
 class User(UserMixin):
-    # This is a basic user model, you might want to expand it for a real-world use case
     def __init__(self, id):
         self.id = id
 
-# Simple user storage, should be replaced with a proper database in a real-world app
-users = {'admin': {'password': 'admin'}}  # This is just an example. Don't use hardcoded passwords in production!
+users = {'admin': {'password': 'admin'}}
 
 @login_manager.user_loader
 def load_user(user_id):
@@ -49,9 +48,9 @@ def login():
         if user and user['password'] == form.password.data:
             user_obj = User(form.username.data)
             login_user(user_obj)
-            return redirect(url_for('index'))
+            return jsonify({'status': 'success'})
         else:
-            return "Invalid credentials"
+            return jsonify({'status': 'failure', 'message': 'Invalid credentials'})
     return render_template('login.html', form=form)
 
 @app.route('/logout')
