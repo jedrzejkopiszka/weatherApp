@@ -18,149 +18,173 @@
     </style>
 </head>
 <body class="bg-light py-5">
-
-<div class="container">
-    <div class="row justify-content-center">
-        <div class="col-md-6">
-            <div class="card">
-                <div class="card-body">
-                    <h2 class="text-center mb-4">Check Weather</h2>
-                    <form id="weatherForm">
-                        <div class="form-group">
-                            <input type="text" class="form-control" name="city" placeholder="Enter City" required>
+    <div class="container">
+        <div class="row justify-content-center">
+            <div class="col-md-6">
+                <div class="card">
+                    <nav class="navbar navbar-expand-lg navbar-light bg-light">
+                        <a class="navbar-brand" href="/">Weather App</a>
+                        <div class="collapse navbar-collapse" id="navbarNav">
+                            <ul class="navbar-nav ml-auto">
+                                {% if current_user.is_authenticated %}
+                                <li class="nav-item">
+                                    <a class="nav-link" href="/logout">Logout</a>
+                                </li>
+                                {% else %}
+                                <li class="nav-item">
+                                    <a class="nav-link" href="/login">Login</a>
+                                </li>
+                                {% endif %}
+                            </ul>
                         </div>
-                        <button type="submit" class="btn btn-primary btn-block">Check</button>
-                    </form>
+                    </nav>
+                    <div class="card-body">
+                        <h2 class="text-center mb-4">Check Weather</h2>
+                        <form id="weatherForm">
+                            <div class="form-group">
+                                <input type="text" class="form-control" name="city" placeholder="Enter City" required>
+                            </div>
+                            <button type="submit" class="btn btn-primary btn-block">Check</button>
+                        </form>
+                    </div>
                 </div>
-            </div>
 
-            <div id="weatherData" class="mt-4">
-                <h3 id="cityName" class="text-center"></h3>
-                <div class="text-center my-3">
-                    <img id="weatherIcon" width="50" height="50" src="" alt="">
+                {% if current_user.is_authenticated %}
+                <div class="container">
+                    <div id="weatherData" class="mt-4">
+                        <h3 id="cityName" class="text-center"></h3>
+                        <div class="text-center my-3">
+                            <img id="weatherIcon" width="50" height="50" src="" alt="">
+                        </div>
+                        <p id="weatherDescription" class="text-center font-weight-bold"></p>
+                        <p id="temperature" class="text-center text-primary"></p>
+                    </div>
+                    <div class="chart-container">
+                        <canvas id="forecastChart" width="400" height="200"></canvas>
+                    </div>
                 </div>
-                <p id="weatherDescription" class="text-center font-weight-bold"></p>
-                <p id="temperature" class="text-center text-primary"></p>
+                {% else %}
+                <div class="container mt-5">
+                    <div class="alert alert-info">
+                        Please <a href="/login">login</a> to view the weather details for selected location.
+                    </div>
+                </div>
+                {% endif %}
+                <div id="map" class="mt-4" style="width: 100%; height: 400px;"></div>
             </div>
-            <div class="chart-container">
-                <canvas id="forecastChart" width="400" height="200"></canvas>
-            </div>
-            <div id="map" class="mt-4" style="width: 100%; height: 400px;"></div>
-
         </div>
     </div>
-</div>
 
-<script>
-    let map = L.map('map').setView([46.921828, -4.158597],1);
-    const cities = ["New York", "London", "Tokyo", "Paris"];
+    <script>
+        let map = L.map('map').setView([46.921828, -4.158597],1);
+        const cities = ["New York", "London", "Tokyo", "Paris"];
 
-    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-        attribution: '&copy; OpenStreetMap contributors'
-    }).addTo(map);
-   
-    function displayCityWeather(cityData) {
-    L.marker([cityData.lat, cityData.lon]).addTo(map)
-        .bindPopup(`
-            <strong>${cityData.city}</strong><br>
-            ${cityData.description}<br>
-            <img src="http://openweathermap.org/img/w/${cityData.icon}.png" alt="${cityData.description}" width="50" height="50"><br>
-            ${ (cityData.temperature - 273.15).toFixed(0) }°C
-        `)
-        .openPopup();
-    }
+        L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+            attribution: '&copy; OpenStreetMap contributors'
+        }).addTo(map);
+    
+        function displayCityWeather(cityData) {
+        L.marker([cityData.lat, cityData.lon]).addTo(map)
+            .bindPopup(`
+                <strong>${cityData.city}</strong><br>
+                ${cityData.description}<br>
+                <img src="http://openweathermap.org/img/w/${cityData.icon}.png" alt="${cityData.description}" width="50" height="50"><br>
+                ${ (cityData.temperature - 273.15).toFixed(0) }°C
+            `)
+            .openPopup();
+        }
 
-    fetch('/get_multiple_weather', {
-        method: 'POST',
-        headers: {
-            'Content-Type': 'application/json'
-        },
-        body: JSON.stringify({ cities })
-    })
-    .then(response => response.json())
-    .then(data => {
-        data.forEach(displayCityWeather);
-    });
-
-    document.getElementById('weatherForm').addEventListener('submit', function(e) {
-        e.preventDefault();
-        const city = e.target.city.value;
-
-        fetch('/get_weather', {
+        fetch('/get_multiple_weather', {
             method: 'POST',
-            body: new URLSearchParams({ 'city': city }),
             headers: {
-                'Content-Type': 'application/x-www-form-urlencoded'
-            }
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({ cities })
         })
         .then(response => response.json())
         .then(data => {
-            if (data.error) {
-                alert(data.error);
-                return;
-            }
-
-            document.getElementById('cityName').textContent = data.city;
-            document.getElementById('weatherIcon').src = "http://openweathermap.org/img/w/" + data.icon + ".png";
-            document.getElementById('weatherIcon').style.display = "block";
-            document.getElementById('weatherDescription').textContent = data.description;
-            document.getElementById('temperature').textContent = (data.temperature - 273.15).toFixed(0) + "°C";  // Convert Kelvin to Celsius
-            
-            map.setView([data.lat, data.lon], 5);
-            
-            L.marker([data.lat, data.lon]).addTo(map)
-                .bindPopup(`
-                    <strong>${data.city}</strong><br>
-                    ${data.description}<br>
-                    <img src="http://openweathermap.org/img/w/${data.icon}.png" alt="${data.description}" width="50" height="50"><br>
-                    ${ (data.temperature - 273.15).toFixed(0) }°C
-                `)
-                .openPopup();
+            data.forEach(displayCityWeather);
         });
 
-        fetch('/forecast', {
-            method: 'POST',
-            body: new URLSearchParams({ 'city': city }),
-            headers: {
-                'Content-Type': 'application/x-www-form-urlencoded'
-            }
-        }) 
-        .then(response => response.json())
-        .then(data => {
-            if (data.error) {
-                alert(data.error);
-                return;
-            }
+        document.getElementById('weatherForm').addEventListener('submit', function(e) {
+            e.preventDefault();
+            const city = e.target.city.value;
 
-            const dates = Object.keys(data);
-            const temperatures = Object.values(data);
+            fetch('/get_weather', {
+                method: 'POST',
+                body: new URLSearchParams({ 'city': city }),
+                headers: {
+                    'Content-Type': 'application/x-www-form-urlencoded'
+                }
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.error) {
+                    alert(data.error);
+                    return;
+                }
 
-            const ctx = document.getElementById('forecastChart').getContext('2d');
-            new Chart(ctx, {
-                type: 'line',
-                data: {
-                    labels: dates,
-                    datasets: [{
-                        label: 'Max Temperature (°C)',
-                        data: temperatures,
-                        borderColor: 'rgba(75, 192, 192, 1)',
-                        backgroundColor: 'rgba(75, 192, 192, 0.2)',
-                        fill: true
-                    }]
-                },
-                options: {
-                    scales: {
-                        y: {
-                            beginAtZero: true
+                document.getElementById('cityName').textContent = data.city;
+                document.getElementById('weatherIcon').src = "http://openweathermap.org/img/w/" + data.icon + ".png";
+                document.getElementById('weatherIcon').style.display = "block";
+                document.getElementById('weatherDescription').textContent = data.description;
+                document.getElementById('temperature').textContent = (data.temperature - 273.15).toFixed(0) + "°C";  // Convert Kelvin to Celsius
+                
+                map.setView([data.lat, data.lon], 5);
+                
+                L.marker([data.lat, data.lon]).addTo(map)
+                    .bindPopup(`
+                        <strong>${data.city}</strong><br>
+                        ${data.description}<br>
+                        <img src="http://openweathermap.org/img/w/${data.icon}.png" alt="${data.description}" width="50" height="50"><br>
+                        ${ (data.temperature - 273.15).toFixed(0) }°C
+                    `)
+                    .openPopup();
+            });
+
+            fetch('/forecast', {
+                method: 'POST',
+                body: new URLSearchParams({ 'city': city }),
+                headers: {
+                    'Content-Type': 'application/x-www-form-urlencoded'
+                }
+            }) 
+            .then(response => response.json())
+            .then(data => {
+                if (data.error) {
+                    alert(data.error);
+                    return;
+                }
+
+                const dates = Object.keys(data);
+                const temperatures = Object.values(data);
+
+                const ctx = document.getElementById('forecastChart').getContext('2d');
+                new Chart(ctx, {
+                    type: 'line',
+                    data: {
+                        labels: dates,
+                        datasets: [{
+                            label: 'Max Temperature (°C)',
+                            data: temperatures,
+                            borderColor: 'rgba(75, 192, 192, 1)',
+                            backgroundColor: 'rgba(75, 192, 192, 0.2)',
+                            fill: true
+                        }]
+                    },
+                    options: {
+                        scales: {
+                            y: {
+                                beginAtZero: true
+                            }
                         }
                     }
-                }
+            });
         });
-    });
 
-    });
-    
-</script>
+        });
+        
+    </script>
 
 </body>
 </html>
