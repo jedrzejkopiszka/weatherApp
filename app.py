@@ -1,24 +1,104 @@
-from flask import Flask, render_template, request, jsonify
+from flask import Flask, render_template, request, jsonify, redirect, url_for
+from flask_sqlalchemy import SQLAlchemy
+from werkzeug.security import generate_password_hash, check_password_hash
+from flask_login import LoginManager, UserMixin, login_user, login_required, logout_user, current_user
+from flask_wtf import FlaskForm
+from wtforms import StringField, PasswordField, SubmitField
+from wtforms.validators import DataRequired
 import configparser
 import requests
 from collections import defaultdict
-from datetime import datetime
+from datetime import datetime, timedelta
 
 
 app = Flask(__name__)
 
-BASE_URL = "http://api.openweathermap.org/data/2.5/weather?"
-FORECAST_URL = "http://api.openweathermap.org/data/2.5/forecast?"
-
 config = configparser.ConfigParser()
 config.read('config.ini')
+app.config['SECRET_KEY'] = 'some_random_secret_key'
+app.config['PERMANENT_SESSION_LIFETIME'] = timedelta(minutes=5)
+app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///users.db'  # SQLite DB
+
+login_manager = LoginManager()
+login_manager.init_app(app)
+login_manager.login_view = 'login'
+
+BASE_URL = "http://api.openweathermap.org/data/2.5/weather?"
+FORECAST_URL = "http://api.openweathermap.org/data/2.5/forecast?"
 API_KEY = config['DEFAULT']['api_key']
+
+db = SQLAlchemy(app)
+
+
+class User(UserMixin, db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    username = db.Column(db.String(150), unique=True, nullable=False)
+    password = db.Column(db.String(150), nullable=False)
+
+users = {'admin': {'password': 'admin'}}
+
+@login_manager.user_loader
+def load_user(user_id):
+    return User.query.get(int(user_id))
+
+class RegisterForm(FlaskForm):
+    username = StringField('Username', validators=[DataRequired()])
+    password = PasswordField('Password', validators=[DataRequired()])
+    submit = SubmitField('Register')
+
+@app.route('/register', methods=['GET', 'POST'])
+def register():
+    form = RegisterForm()
+    if request.method == 'POST':
+        username = request.form.get('username')
+        password = request.form.get('password')
+        
+        existing_user = User.query.filter_by(username=username).first()
+
+        if existing_user:
+            return jsonify({'status': 'failure', 'message': 'User already exists'})
+        
+        hashed_password = generate_password_hash(password, method='sha256')
+        new_user = User(username=username, password=hashed_password)
+        db.session.add(new_user)
+        db.session.commit()
+        return jsonify({'status': 'success'})
+    else :
+        return render_template('register.html', form=form)
+
+class LoginForm(FlaskForm):
+    username = StringField('Username', validators=[DataRequired()])
+    password = PasswordField('Password', validators=[DataRequired()])
+    submit = SubmitField('Login')
+
+@app.route('/login', methods=['GET', 'POST'])
+def login():
+    form = LoginForm()
+    if request.method == 'POST':
+        username = request.form['username']
+        password = request.form['password']
+        
+        user = User.query.filter_by(username=username).first()
+        
+        if user and check_password_hash(user.password, password):
+            login_user(user)
+            return jsonify({'status': 'success'})
+        return jsonify({'status': 'failure', 'message': 'Invalid credentials'})
+    else :
+        return render_template('login.html', form=form)
+
+@app.route('/logout')
+@login_required
+def logout():
+    logout_user()
+    return redirect(url_for('index'))
 
 @app.route('/')
 def index():
-    return render_template('index.html')
+    return render_template('index.html', current_user=current_user)
 
 @app.route('/get_weather', methods=['POST'])
+@login_required
 def get_weather():
     city = request.form['city']
     complete_url = BASE_URL + "q=" + city + "&appid=" + API_KEY
@@ -70,6 +150,7 @@ def get_multiple_weather():
     return jsonify(weather_data)
 
 @app.route('/forecast', methods=['POST'])
+@login_required
 def get_forecast():
     city = request.form['city']
     response = requests.get(FORECAST_URL + "q=" + city + "&appid=" + API_KEY)
@@ -89,4 +170,4 @@ def get_forecast():
 
 
 if __name__ == '__main__':
-    app.run(debug=True)
+    app.run(debug=False)

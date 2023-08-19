@@ -1,1 +1,4 @@
 config.ini
+__pycache__/
+instance/
+manually_add_user.py
