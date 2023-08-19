@@ -1,4 +1,6 @@
 from flask import Flask, render_template, request, jsonify, redirect, url_for
+from flask_sqlalchemy import SQLAlchemy
+from werkzeug.security import generate_password_hash, check_password_hash
 from flask_login import LoginManager, UserMixin, login_user, login_required, logout_user, current_user
 from flask_wtf import FlaskForm
 from wtforms import StringField, PasswordField, SubmitField
@@ -11,29 +13,45 @@ from datetime import datetime, timedelta
 
 app = Flask(__name__)
 
-BASE_URL = "http://api.openweathermap.org/data/2.5/weather?"
-FORECAST_URL = "http://api.openweathermap.org/data/2.5/forecast?"
-
 config = configparser.ConfigParser()
 config.read('config.ini')
-API_KEY = config['DEFAULT']['api_key']
+app.config['SECRET_KEY'] = 'some_random_secret_key'
+app.config['PERMANENT_SESSION_LIFETIME'] = timedelta(minutes=5)
+app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///users.db'  # SQLite DB
 
 login_manager = LoginManager()
 login_manager.init_app(app)
 login_manager.login_view = 'login'
 
-app.config['SECRET_KEY'] = 'some_random_secret_key'
-app.config['PERMANENT_SESSION_LIFETIME'] = timedelta(minutes=5)
+BASE_URL = "http://api.openweathermap.org/data/2.5/weather?"
+FORECAST_URL = "http://api.openweathermap.org/data/2.5/forecast?"
+API_KEY = config['DEFAULT']['api_key']
 
-class User(UserMixin):
-    def __init__(self, id):
-        self.id = id
+db = SQLAlchemy(app)
+
+
+class User(UserMixin, db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    username = db.Column(db.String(150), unique=True, nullable=False)
+    password = db.Column(db.String(150), nullable=False)
 
 users = {'admin': {'password': 'admin'}}
 
 @login_manager.user_loader
 def load_user(user_id):
-    return User(user_id) if user_id in users else None
+    return User.query.get(int(user_id))
+
+@app.route('/register', methods=['POST'])
+def register():
+    username = request.form.get('username')
+    password = request.form.get('password')
+    
+    hashed_password = generate_password_hash(password, method='sha256')
+    
+    new_user = User(username=username, password=hashed_password)
+    db.session.add(new_user)
+    db.session.commit()
+    return 'Registered successfully', 201
 
 class LoginForm(FlaskForm):
     username = StringField('Username', validators=[DataRequired()])
@@ -43,15 +61,18 @@ class LoginForm(FlaskForm):
 @app.route('/login', methods=['GET', 'POST'])
 def login():
     form = LoginForm()
-    if form.validate_on_submit():
-        user = users.get(form.username.data)
-        if user and user['password'] == form.password.data:
-            user_obj = User(form.username.data)
-            login_user(user_obj)
+    if request.method == 'POST':
+        username = request.form['username']
+        password = request.form['password']
+        
+        user = User.query.filter_by(username=username).first()
+        
+        if user and check_password_hash(user.password, password):
+            login_user(user)
             return jsonify({'status': 'success'})
-        else:
-            return jsonify({'status': 'failure', 'message': 'Invalid credentials'})
-    return render_template('login.html', form=form)
+        return jsonify({'status': 'failure', 'message': 'Invalid credentials'})
+    else :
+        return render_template('login.html', form=form)
 
 @app.route('/logout')
 @login_required
@@ -136,4 +157,4 @@ def get_forecast():
 
 
 if __name__ == '__main__':
-    app.run(debug=True)
+    app.run(debug=False)
