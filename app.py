@@ -41,17 +41,26 @@ users = {'admin': {'password': 'admin'}}
 def load_user(user_id):
     return User.query.get(int(user_id))
 
-@app.route('/register', methods=['POST'])
+class RegisterForm(FlaskForm):
+    username = StringField('Username', validators=[DataRequired()])
+    password = PasswordField('Password', validators=[DataRequired()])
+    submit = SubmitField('Register')
+
+@app.route('/register', methods=['GET', 'POST'])
 def register():
-    username = request.form.get('username')
-    password = request.form.get('password')
-    
-    hashed_password = generate_password_hash(password, method='sha256')
-    
-    new_user = User(username=username, password=hashed_password)
-    db.session.add(new_user)
-    db.session.commit()
-    return 'Registered successfully', 201
+    form = RegisterForm()
+    if request.method == 'POST':
+        username = request.form.get('username')
+        password = request.form.get('password')
+        
+        hashed_password = generate_password_hash(password, method='sha256')
+        
+        new_user = User(username=username, password=hashed_password)
+        db.session.add(new_user)
+        db.session.commit()
+        return jsonify({'status': 'success'})
+    else :
+        return render_template('register.html', form=form)
 
 class LoginForm(FlaskForm):
     username = StringField('Username', validators=[DataRequired()])
