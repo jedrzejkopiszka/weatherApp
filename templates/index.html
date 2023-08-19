@@ -155,7 +155,7 @@
                 if (data.error) {
                     alert(data.error);
                     return;
-                }
+                }   
 
                 const dates = Object.keys(data);
                 const temperatures = Object.values(data);
@@ -180,9 +180,44 @@
                             }
                         }
                     }
+                });
             });
-        });
 
+            let newButton = document.createElement('button');
+            newButton.innerText = "New Button";
+            document.body.appendChild(newButton);
+
+            // Add an event listener to the new button
+            newButton.addEventListener('click', function() {
+                const data = {
+                    city_name: city
+                };
+                
+                fetch('/add_favourite', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify(data)
+                })
+                .then(response => {
+                    if (!response.ok) {
+                        throw new Error('Network response was not ok');
+                    }   
+                    return response.json();
+                })
+                .then(data => {
+                    // Here, we handle the response from the server.
+                    if (data.isFavorite) {
+                        console.log('This city is already in your favorites!');
+                    } else {
+                    console.log('City added to your favorites!');
+                    }
+                })
+                .catch(error => {
+                    console.error('Error:', error);
+                });
+            });
         });
         
     </script>

@@ -3,6 +3,7 @@ from flask_sqlalchemy import SQLAlchemy
 from werkzeug.security import generate_password_hash, check_password_hash
 from flask_login import LoginManager, UserMixin, login_user, login_required, logout_user, current_user
 from flask_wtf import FlaskForm
+from flask_migrate import Migrate
 from wtforms import StringField, PasswordField, SubmitField
 from wtforms.validators import DataRequired
 import configparser
@@ -28,14 +29,24 @@ FORECAST_URL = "http://api.openweathermap.org/data/2.5/forecast?"
 API_KEY = config['DEFAULT']['api_key']
 
 db = SQLAlchemy(app)
+migrate = Migrate(app, db)
 
+
+favourites = db.Table('favourites',
+    db.Column('user_id', db.Integer, db.ForeignKey('user.id'), primary_key=True),
+    db.Column('city_id', db.Integer, db.ForeignKey('city.id'), primary_key=True)
+)
 
 class User(UserMixin, db.Model):
     id = db.Column(db.Integer, primary_key=True)
     username = db.Column(db.String(150), unique=True, nullable=False)
     password = db.Column(db.String(150), nullable=False)
+    favorite_cities = db.relationship('City', secondary=favourites, backref=db.backref('users', lazy='dynamic'))
 
-users = {'admin': {'password': 'admin'}}
+class City(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    name = db.Column(db.String(100), nullable=False)
+
 
 @login_manager.user_loader
 def load_user(user_id):
@@ -168,6 +179,39 @@ def get_forecast():
 
     return jsonify(dict(daily_max_temps))
 
+@app.route('/add_favourite', methods=['POST'])
+@login_required
+def add_favourite():
+    user_id = current_user.id
+    user = User.query.get(user_id)
+    city = request.get_json().get('city_name')
+
+    if not city:
+        return jsonify({'error': 'City name is missing'}), 400
+    
+    # Check if the city is already in the favorites for the user
+    city_in_favorites = any(fav_city.name == city for fav_city in user.favorite_cities)
+    
+    if city_in_favorites:
+        return jsonify({'isFavorite': True})
+    
+    # If not in favorites, add to the favorites database
+    
+    new_fav_city = City.query.filter_by(name=city).first()
+    print(new_fav_city)
+    if not new_fav_city:
+        print("ok")
+        new_fav_city = City(name=city)  # Create a new city entry if it doesn't exist
+        db.session.add(new_fav_city)
+        db.session.commit()
+    
+    current_user.favorite_cities.append(new_fav_city)
+    print("added")
+    print(current_user.favorite_cities)
+    a = City.query.filter_by(name=new_fav_city.name).first()
+    print(a.name)
+    db.session.commit()
+    return jsonify({'isFavorite': False})
 
 if __name__ == '__main__':
     app.run(debug=False)
