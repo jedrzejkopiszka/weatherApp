@@ -59,6 +59,7 @@
                         </div>
                         <p id="weatherDescription" class="text-center font-weight-bold"></p>
                         <p id="temperature" class="text-center text-primary"></p>
+                        <div id="buttonContainer"></div>
                     </div>
                     <div class="chart-container">
                         <canvas id="forecastChart" width="400" height="200"></canvas>
@@ -155,7 +156,7 @@
                 if (data.error) {
                     alert(data.error);
                     return;
-                }
+                }   
 
                 const dates = Object.keys(data);
                 const temperatures = Object.values(data);
@@ -180,9 +181,51 @@
                             }
                         }
                     }
+                });
             });
-        });
+            
+            let oldButton = document.getElementById("addFavouriteBtn");
+            if (oldButton) {
+                oldButton.remove();  // Remove the old button
+            }
 
+            let newButton = document.createElement('button');
+            newButton.id = "addFavouriteBtn";
+            newButton.innerText = "Add to favourites";
+            newButton.className = "btn btn-primary"; 
+
+
+            let container = document.getElementById("buttonContainer");
+            container.className = "d-flex justify-content-center";
+            container.appendChild(newButton);
+
+            // Add an event listener to the new button
+            newButton.addEventListener('click', function() {
+                const data = {
+                    city_name: city
+                };
+                
+                fetch('/add_favourite', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify(data)
+                })
+                .then(response => response.json())
+                .then(data => {
+                    // Here, we handle the response from the server.
+                    if (data.isFavorite) {
+                        alert('This city is already in your favorites!');
+                    } else {
+                        alert('City added to your favorites!');
+                    }
+                })
+                .catch(error => {
+                    console.error('Error:', error);
+                    alert('City added to your favorites!');
+                });
+            });
         });
         
     </script>
