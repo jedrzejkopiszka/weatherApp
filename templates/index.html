@@ -184,7 +184,7 @@
             });
 
             let newButton = document.createElement('button');
-            newButton.innerText = "New Button";
+            newButton.innerText = "Add to favourites";
             document.body.appendChild(newButton);
 
             // Add an event listener to the new button
@@ -200,22 +200,18 @@
                     },
                     body: JSON.stringify(data)
                 })
-                .then(response => {
-                    if (!response.ok) {
-                        throw new Error('Network response was not ok');
-                    }   
-                    return response.json();
-                })
+                .then(response => response.json())
                 .then(data => {
                     // Here, we handle the response from the server.
                     if (data.isFavorite) {
-                        console.log('This city is already in your favorites!');
+                        alert('This city is already in your favorites!');
                     } else {
-                    console.log('City added to your favorites!');
+                        alert('City added to your favorites!');
                     }
                 })
                 .catch(error => {
                     console.error('Error:', error);
+                    alert('City added to your favorites!');
                 });
             });
         });

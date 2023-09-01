@@ -185,18 +185,20 @@ def add_favourite():
     user_id = current_user.id
     user = User.query.get(user_id)
     city = request.get_json().get('city_name')
+    print(user_id, user, city)
 
     if not city:
         return jsonify({'error': 'City name is missing'}), 400
     
     # Check if the city is already in the favorites for the user
     city_in_favorites = any(fav_city.name == city for fav_city in user.favorite_cities)
-    
+    print("checked in favourites,", city_in_favorites)
     if city_in_favorites:
+        print("works")
         return jsonify({'isFavorite': True})
     
     # If not in favorites, add to the favorites database
-    
+    print('not favourite')
     new_fav_city = City.query.filter_by(name=city).first()
     print(new_fav_city)
     if not new_fav_city:
