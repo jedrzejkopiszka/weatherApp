@@ -19,6 +19,8 @@ config.read('config.ini')
 app.config['SECRET_KEY'] = 'some_random_secret_key'
 app.config['PERMANENT_SESSION_LIFETIME'] = timedelta(minutes=5)
 app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///users.db'  # SQLite DB
+app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = True
+
 
 login_manager = LoginManager()
 login_manager.init_app(app)
