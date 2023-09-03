@@ -10,6 +10,7 @@ import configparser
 import requests
 from collections import defaultdict
 from datetime import datetime, timedelta
+from dateutil.relativedelta import relativedelta
 
 
 app = Flask(__name__)
@@ -211,6 +212,41 @@ def add_favourite():
     current_user.favorite_cities.append(new_fav_city)
     db.session.commit()
     return jsonify({'isFavorite': False})
+
+@app.route('/get_local_news', methods=['POST'])
+def get_local_news():
+    city = request.get_json().get('city_name')
+    news_url = "https://newsapi.org/v2/everything"
+    news_API_KEY = config['DEFAULT']['news_api_key']
+
+    query = f"+{city}"
+    currentTimeDate = datetime.now() - relativedelta(months=1)
+    today_minus_month = currentTimeDate.strftime('%Y-%m-%d')
+    sorting = 'relevancy'
+    searchIn = 'title,description'
+    params = {"apiKey" : news_API_KEY,
+               "q" : query,
+               "from": today_minus_month,
+               "sortBy" : sorting,
+               "searchIn" : searchIn,
+               "pageSize" : 5}
+    
+    response = requests.get(news_url, params=params)
+    
+    if response.status_code == 200:
+        list_of_articles = response.json()["articles"]
+        articles_data = []
+        for article in list_of_articles:
+            json = jsonify({
+                'title' : article['title'],
+                'url' : article['url'],
+                'urltoImage' : article['urlToImage']
+            }).get_json()
+
+            articles_data.append(json)
+        return jsonify({'error':None, 'articles': articles_data})
+    else:
+        return jsonify({'error': 'Unknown error occured', 'articles':[]})
 
 if __name__ == '__main__':
     app.run(debug=False)
