@@ -155,7 +155,14 @@ def get_weather_data(city):
 
 @app.route('/get_multiple_weather', methods=['POST'])
 def get_multiple_weather():
-    cities = request.json.get('cities', [])
+    is_logged_in = current_user.is_authenticated if hasattr(current_user, 'is_authenticated') else False
+    cities = []
+    if is_logged_in:
+        user_id = current_user.id
+        user = User.query.get(user_id)
+        cities = [fav_city.name for fav_city in user.favorite_cities]
+    if is_logged_in == False or len(cities) == 0:
+        cities = request.json.get('cities', [])
     weather_data = []
     for city in cities:
         data = get_weather_data(city) 
@@ -187,33 +194,21 @@ def add_favourite():
     user_id = current_user.id
     user = User.query.get(user_id)
     city = request.get_json().get('city_name')
-    print(user_id, user, city)
 
     if not city:
         return jsonify({'error': 'City name is missing'}), 400
     
-    # Check if the city is already in the favorites for the user
     city_in_favorites = any(fav_city.name == city for fav_city in user.favorite_cities)
-    print("checked in favourites,", city_in_favorites)
     if city_in_favorites:
-        print("works")
         return jsonify({'isFavorite': True})
     
-    # If not in favorites, add to the favorites database
-    print('not favourite')
     new_fav_city = City.query.filter_by(name=city).first()
-    print(new_fav_city)
     if not new_fav_city:
-        print("ok")
-        new_fav_city = City(name=city)  # Create a new city entry if it doesn't exist
+        new_fav_city = City(name=city) 
         db.session.add(new_fav_city)
         db.session.commit()
     
     current_user.favorite_cities.append(new_fav_city)
-    print("added")
-    print(current_user.favorite_cities)
-    a = City.query.filter_by(name=new_fav_city.name).first()
-    print(a.name)
     db.session.commit()
     return jsonify({'isFavorite': False})
 
