@@ -1,4 +1,5 @@
 from flask import Flask, render_template, request, jsonify, redirect, url_for
+from flask_mail import Mail, Message
 from flask_sqlalchemy import SQLAlchemy
 from werkzeug.security import generate_password_hash, check_password_hash
 from flask_login import LoginManager, UserMixin, login_user, login_required, logout_user, current_user
@@ -11,6 +12,7 @@ import requests
 from collections import defaultdict
 from datetime import datetime, timedelta
 from dateutil.relativedelta import relativedelta
+import re
 
 
 app = Flask(__name__)
@@ -45,7 +47,9 @@ class User(UserMixin, db.Model):
     id = db.Column(db.Integer, primary_key=True)
     username = db.Column(db.String(150), unique=True, nullable=False)
     password = db.Column(db.String(150), nullable=False)
+    email = db.Column(db.String(120), unique=True, nullable=False)
     favorite_cities = db.relationship('City', secondary=favourites, backref=db.backref('users', lazy='dynamic'))
+    email_notifications = db.Column(db.Boolean, default=False)
 
 class City(db.Model):
     id = db.Column(db.Integer, primary_key=True)
@@ -58,6 +62,7 @@ def load_user(user_id):
 
 class RegisterForm(FlaskForm):
     username = StringField('Username', validators=[DataRequired()])
+    email = StringField('Email', validators=[DataRequired()])
     password = PasswordField('Password', validators=[DataRequired()])
     submit = SubmitField('Register')
 
@@ -66,6 +71,7 @@ def register():
     form = RegisterForm()
     if request.method == 'POST':
         username = request.form.get('username')
+        email = request.form.get('email')
         password = request.form.get('password')
         
         existing_user = User.query.filter_by(username=username).first()
@@ -73,8 +79,12 @@ def register():
         if existing_user:
             return jsonify({'status': 'failure', 'message': 'User already exists'})
         
+        email_verification_pattern = r"^[a-zA-Z0-9_.+-]+@[a-zA-Z0-9-]+\.[a-zA-Z0-9-.]+$"
+        if not bool(re.match(email_verification_pattern, email)):
+            return jsonify({'status': 'failure', 'message': 'E-mail not in supported format'})
+        
         hashed_password = generate_password_hash(password, method='sha256')
-        new_user = User(username=username, password=hashed_password)
+        new_user = User(username=username, email=email, password=hashed_password)
         db.session.add(new_user)
         db.session.commit()
         return jsonify({'status': 'success'})
