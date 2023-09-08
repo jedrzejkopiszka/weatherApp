@@ -9,6 +9,7 @@
     <script src="https://ajax.googleapis.com/ajax/libs/jquery/3.5.1/jquery.min.js"></script>
     <script src="https://maxcdn.bootstrapcdn.com/bootstrap/4.5.2/js/bootstrap.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
 
 </head>
 <style>
@@ -44,7 +45,8 @@
                         <h2 class="text-center mb-4">Check Weather</h2>
                         <form id="weatherForm">
                             <div class="form-group">
-                                <input type="text" class="form-control" name="city" placeholder="Enter City" required>
+                                <input type="text" class="form-control" name="city" id="citySearch" placeholder="Search for a city..." required autocomplete="off">
+                                <div id="suggestions" class="suggestions-box"></div>
                             </div>
                             <button type="submit" class="btn btn-primary btn-block">Check</button>
                         </form>
@@ -131,6 +133,27 @@
         .then(response => response.json())
         .then(data => {
             data.forEach(displayCityWeather);
+        });
+
+        $('#citySearch').on('input', function() {
+            const query = $(this).val();
+
+            if (query.length > 2) {
+                $.get('/search_city', { q: query }, function(data) {
+                    let suggestionsHtml = '';
+                    data.forEach(city => {
+                        suggestionsHtml += `<div class="suggestion-item">${city}</div>`;
+                    });
+                    $('#suggestions').html(suggestionsHtml);
+                });
+            } else {
+                $('#suggestions').empty();
+            }
+        });
+
+        $('#suggestions').on('click', '.suggestion-item', function() {
+            $('#citySearch').val($(this).text());
+            $('#suggestions').empty();
         });
 
         document.getElementById('weatherForm').addEventListener('submit', function(e) {

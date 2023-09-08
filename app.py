@@ -30,6 +30,7 @@ login_manager.login_view = 'login'
 BASE_URL = "http://api.openweathermap.org/data/2.5/weather?"
 FORECAST_URL = "http://api.openweathermap.org/data/2.5/forecast?"
 API_KEY = config['DEFAULT']['api_key']
+GEONAMES_USERNAME = config['DEFAULT']['geonames_username']
 
 db = SQLAlchemy(app)
 migrate = Migrate(app, db)
@@ -247,6 +248,18 @@ def get_local_news():
         return jsonify({'error':None, 'articles': articles_data})
     else:
         return jsonify({'error': 'Unknown error occured', 'articles':[]})
+
+@app.route('/search_city')
+def search_city():
+    query = request.args.get('q')
+    location_url = "http://api.geonames.org/searchJSON?"
+    complete_url = location_url + "q=" + query + "&maxRows=5" + "&username="+ GEONAMES_USERNAME
+    response = requests.get(complete_url)
+    data = response.json()
+
+    cities = [entry['name'] + ", " + entry['adminName1']+ ', ' + entry['countryName'] for entry in data['geonames']]
+    
+    return jsonify(cities)
 
 if __name__ == '__main__':
     app.run(debug=False)

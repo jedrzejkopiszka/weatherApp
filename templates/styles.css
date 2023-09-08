@@ -3,3 +3,22 @@
     margin-left: auto;
     margin-right: auto;
 }
+.suggestions-box {
+    border: 1px solid #ced4da;
+    max-height: 150px;
+    overflow-y: auto;
+    position: absolute; 
+    width: 100%;
+    background-color: white;
+    z-index: 1000; 
+}
+
+.suggestion-item {
+    padding: 8px 12px;
+    cursor: pointer;
+    border-bottom: 1px solid #e8e8e8;
+}
+
+.suggestion-item:hover {
+    background-color: #f8f8f8;
+}
