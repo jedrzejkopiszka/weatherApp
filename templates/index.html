@@ -41,6 +41,15 @@
                             </ul>
                         </div>
                     </nav>
+                    {% with messages = get_flashed_messages(with_categories=true) %}
+                        {% if messages %}
+                            {% for category, message in messages %}
+                                <div class="alert alert-{{ category }}">
+                                    {{ message }}
+                                </div>
+                            {% endfor %}
+                        {% endif %}
+                    {% endwith %}
                     <div class="card-body">
                         <h2 class="text-center mb-4">Check Weather</h2>
                         <form id="weatherForm">

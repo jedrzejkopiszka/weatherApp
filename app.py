@@ -1,4 +1,4 @@
-from flask import Flask, render_template, request, jsonify, redirect, url_for
+from flask import Flask, render_template, request, jsonify, redirect, url_for, flash
 from flask_mail import Mail, Message
 from flask_sqlalchemy import SQLAlchemy
 from werkzeug.security import generate_password_hash, check_password_hash
@@ -12,6 +12,7 @@ import requests
 from collections import defaultdict
 from datetime import datetime, timedelta
 from dateutil.relativedelta import relativedelta
+from itsdangerous import URLSafeTimedSerializer
 import re
 
 
@@ -19,11 +20,19 @@ app = Flask(__name__)
 
 config = configparser.ConfigParser()
 config.read('config.ini')
-app.config['SECRET_KEY'] = 'some_random_secret_key'
+app.config['SECRET_KEY'] = config['DEFAULT']['app_secret_key']
 app.config['PERMANENT_SESSION_LIFETIME'] = timedelta(minutes=5)
 app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///users.db'  # SQLite DB
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = True
 
+app.config['MAIL_SERVER'] = 'smtp.poczta.onet.pl'
+app.config['MAIL_PORT'] = 465
+app.config['MAIL_USERNAME'] = config['DEFAULT']['wp_email']
+app.config['MAIL_DEFAULT_SENDER'] = config['DEFAULT']['wp_email']
+app.config['MAIL_PASSWORD'] = config['DEFAULT']['wp_password']
+app.config['MAIL_USE_TLS'] = False
+app.config['MAIL_USE_SSL'] = True
+app.config['SECURITY_PASSWORD_SALT'] = config['DEFAULT']['SECURITY_PASSWORD_SALT']
 
 login_manager = LoginManager()
 login_manager.init_app(app)
@@ -36,7 +45,7 @@ GEONAMES_USERNAME = config['DEFAULT']['geonames_username']
 
 db = SQLAlchemy(app)
 migrate = Migrate(app, db)
-
+mail = Mail(app)
 
 favourites = db.Table('favourites',
     db.Column('user_id', db.Integer, db.ForeignKey('user.id'), primary_key=True),
@@ -48,6 +57,8 @@ class User(UserMixin, db.Model):
     username = db.Column(db.String(150), unique=True, nullable=False)
     password = db.Column(db.String(150), nullable=False)
     email = db.Column(db.String(120), unique=True, nullable=False)
+    email_confirmed = db.Column(db.Boolean, nullable=False, default=False)
+    email_confirmed_on = db.Column(db.DateTime, nullable=True)
     favorite_cities = db.relationship('City', secondary=favourites, backref=db.backref('users', lazy='dynamic'))
     email_notifications = db.Column(db.Boolean, default=False)
 
@@ -74,15 +85,22 @@ def register():
         email = request.form.get('email')
         password = request.form.get('password')
         
-        existing_user = User.query.filter_by(username=username).first()
+        existing_username = User.query.filter_by(username=username).first()
+        existing_email = User.query.filter_by(email=email).first()
 
-        if existing_user:
-            return jsonify({'status': 'failure', 'message': 'User already exists'})
+        if existing_username or existing_email:
+            return jsonify({'status': 'failure', 'message': 'User already exists or e-mail already used'})
         
         email_verification_pattern = r"^[a-zA-Z0-9_.+-]+@[a-zA-Z0-9-]+\.[a-zA-Z0-9-.]+$"
         if not bool(re.match(email_verification_pattern, email)):
             return jsonify({'status': 'failure', 'message': 'E-mail not in supported format'})
         
+        token = generate_confirmation_token(email)
+        confirm_url = url_for('confirm_email', token=token, _external=True)
+        html = render_template('email_confirmation.html', confirm_url=confirm_url)
+        subject = "Please confirm your email"
+        send_email(email, subject, html)
+
         hashed_password = generate_password_hash(password, method='sha256')
         new_user = User(username=username, email=email, password=hashed_password)
         db.session.add(new_user)
@@ -270,6 +288,47 @@ def search_city():
     cities = [entry['name'] + ", " + entry['adminName1']+ ', ' + entry['countryName'] for entry in data['geonames']]
     
     return jsonify(cities)
+
+
+def generate_confirmation_token(email):
+    serializer = URLSafeTimedSerializer(app.config['SECRET_KEY'])
+    return serializer.dumps(email, salt=app.config['SECURITY_PASSWORD_SALT'])
+
+def confirm_token(token, expiration=3600):
+    serializer = URLSafeTimedSerializer(app.config['SECRET_KEY'])
+    try:
+        email = serializer.loads(token, salt=app.config['SECURITY_PASSWORD_SALT'], max_age=expiration)
+    except:
+        return False
+    return email
+
+def send_email(to, subject, template):
+    try:
+        msg = Message(subject, recipients=[to], html=template)
+        mail.send(msg)
+        flash('Confirmation e-mail sent successfully!', 'success')
+    except Exception as e:
+        print("error", str(e))
+        flash('Error sending confirmation e-mail. Please try again later.', 'danger')
+
+
+@app.route('/confirm/<token>', methods=['GET'])
+def confirm_email(token):
+    try:
+        email = confirm_token(token)
+    except:
+        flash('The confirmation link is invalid or has expired.', 'danger') 
+    user = User.query.filter_by(email=email).first()
+    if user.email_confirmed:
+        flash('E-mail already confirmed', 'warning')
+    else:
+        user.email_confirmed = True
+        user.email_confirmed_on = datetime.now()
+        db.session.add(user)
+        db.session.commit()
+        flash('Thank you for confirming your email address!', 'success')
+        return redirect(url_for('index'))
+
 
 if __name__ == '__main__':
     app.run(debug=False)
