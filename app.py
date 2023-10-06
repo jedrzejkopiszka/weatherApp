@@ -52,6 +52,11 @@ favourites = db.Table('favourites',
     db.Column('city_id', db.Integer, db.ForeignKey('city.id'), primary_key=True)
 )
 
+emails = db.Table('emails',
+    db.Column('user_id', db.Integer, db.ForeignKey('user.id'), primary_key=True),
+    db.Column('city_id', db.Integer, db.ForeignKey('city.id'), primary_key=True)
+)
+
 class User(UserMixin, db.Model):
     id = db.Column(db.Integer, primary_key=True)
     username = db.Column(db.String(150), unique=True, nullable=False)
@@ -59,8 +64,10 @@ class User(UserMixin, db.Model):
     email = db.Column(db.String(120), unique=True, nullable=False)
     email_confirmed = db.Column(db.Boolean, nullable=False, default=False)
     email_confirmed_on = db.Column(db.DateTime, nullable=True)
-    favorite_cities = db.relationship('City', secondary=favourites, backref=db.backref('users', lazy='dynamic'))
-    email_notifications = db.Column(db.Boolean, default=False)
+    favorite_cities = db.relationship('City', secondary=favourites, lazy='subquery',
+                                      backref=db.backref('favourite_users', lazy=True))
+    emails_enabled = db.relationship('City', secondary=emails, lazy='subquery',
+                                     backref=db.backref('emails_enabled_users', lazy=True))
 
 class City(db.Model):
     id = db.Column(db.Integer, primary_key=True)
@@ -241,6 +248,34 @@ def add_favourite():
     current_user.favorite_cities.append(new_fav_city)
     db.session.commit()
     return jsonify({'isFavorite': False})
+
+@app.route('/send_scheduled_notifications', methods=['POST'])
+@login_required
+def send_weather_emails():
+    user_id = current_user.id
+    user = User.query.get(user_id)
+    city = request.get_json().get('city_name')
+
+    if not city:
+        return jsonify({'error': 'City name is missing'}), 400
+    
+    elif user.email_confirmed:
+        new_email_city = City.query.filter_by(name=city).first()
+        if not new_email_city:
+            new_email_city = City(name=city) 
+            db.session.add(new_email_city)
+            db.session.commit() 
+
+        city_in_emails = any(enabled_city.name == city for enabled_city in user.emails_enabled)
+        if not city_in_emails:
+            current_user.emails_enabled.append(new_email_city)
+            db.session.commit()
+            return jsonify({'hasUnconfirmedEmail': False})
+        
+        return jsonify({'error': 'E-mails already enabled for this city'}), 400
+    
+    else:
+        return jsonify({'hasUnconfirmedEmail': True})
 
 @app.route('/get_local_news', methods=['POST'])
 def get_local_news():
