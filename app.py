@@ -1,4 +1,5 @@
 from flask import Flask, render_template, request, jsonify, redirect, url_for, flash
+from flask_apscheduler import APScheduler
 from flask_mail import Mail, Message
 from flask_sqlalchemy import SQLAlchemy
 from werkzeug.security import generate_password_hash, check_password_hash
@@ -25,6 +26,9 @@ app.config['PERMANENT_SESSION_LIFETIME'] = timedelta(minutes=5)
 app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///users.db'  # SQLite DB
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = True
 
+app.config['SCHEDULER_API_ENABLED'] = True
+app.config['SCHEDULER_TIMEZONE'] = 'utc'
+
 app.config['MAIL_SERVER'] = 'smtp.poczta.onet.pl'
 app.config['MAIL_PORT'] = 465
 app.config['MAIL_USERNAME'] = config['DEFAULT']['wp_email']
@@ -37,6 +41,10 @@ app.config['SECURITY_PASSWORD_SALT'] = config['DEFAULT']['SECURITY_PASSWORD_SALT
 login_manager = LoginManager()
 login_manager.init_app(app)
 login_manager.login_view = 'login'
+
+scheduler = APScheduler()
+scheduler.init_app(app)
+scheduler.start()
 
 BASE_URL = "http://api.openweathermap.org/data/2.5/weather?"
 FORECAST_URL = "http://api.openweathermap.org/data/2.5/forecast?"
@@ -171,24 +179,25 @@ def get_weather():
         return jsonify({'error': 'Unknown error occured'})
     
 def get_weather_data(city):
-    complete_url = BASE_URL + "q=" + city + "&appid=" + API_KEY
-    response = requests.get(complete_url)
-    data = response.json()
-    
-    if data.get("cod") != 404:
-        main = data.get("main", {})
-        coord = data.get("coord", {})
-        weather = data["weather"][0] if data.get("weather") else {}
-        return jsonify({
-            'city': data.get('name'),
-            'temperature': main.get("temp"),
-            'description': weather.get("description"),
-            'icon': weather.get("icon"),
-            'lon': coord.get("lon"),
-            'lat': coord.get("lat")
-        }).get_json()
-    else:
-        return jsonify({'error': 'Unknown error occured'})
+    with app.app_context():
+        complete_url = BASE_URL + "q=" + city + "&appid=" + API_KEY
+        response = requests.get(complete_url)
+        data = response.json()
+        
+        if data.get("cod") != 404:
+            main = data.get("main", {})
+            coord = data.get("coord", {})
+            weather = data["weather"][0] if data.get("weather") else {}
+            return jsonify({
+                'city': data.get('name'),
+                'temperature': main.get("temp"),
+                'description': weather.get("description"),
+                'icon': weather.get("icon"),
+                'lon': coord.get("lon"),
+                'lat': coord.get("lat")
+            }).get_json()
+        else:
+            return jsonify({'error': 'Unknown error occured'})
 
 @app.route('/get_multiple_weather', methods=['POST'])
 def get_multiple_weather():
@@ -251,7 +260,7 @@ def add_favourite():
 
 @app.route('/send_scheduled_notifications', methods=['POST'])
 @login_required
-def send_weather_emails():
+def add_city_to_weather_email():
     user_id = current_user.id
     user = User.query.get(user_id)
     city = request.get_json().get('city_name')
@@ -276,6 +285,35 @@ def send_weather_emails():
     
     else:
         return jsonify({'hasUnconfirmedEmail': True})
+    
+def get_users_and_cities():
+    users = User.query.all() 
+    user_city_map = {}
+    for user in users:
+        cities = [city.name for city in user.emails_enabled] 
+        if len(cities) > 0 and user.email_confirmed:
+            user_city_map[user.email] = cities
+    return user_city_map
+
+def generate_email_body(cities):
+    email_body = f"<p>Dear User,</p><p>Here is the weather update for your cities:</p>"
+
+    for city in cities:
+        weather = get_weather_data(city)
+        if 'error' not in weather:
+            email_body += f"<p>- {weather['city']}: {weather['temperature']}°C, {weather['description']}</p>"
+        else:
+            email_body += f"<p>- Couldn't retrieve weather information for {city}</p>"
+    
+    email_body += "<p>Best regards,<br>Your WeatherApp Team</p>"
+    return email_body
+
+def send_emails():
+    user_city_map = get_users_and_cities()
+    for email, cities in user_city_map.items():
+        subject = "Your Assigned Cities"
+        body = generate_email_body(cities)
+        send_weather_notification_email(email, subject, body)
 
 @app.route('/get_local_news', methods=['POST'])
 def get_local_news():
@@ -346,6 +384,15 @@ def send_email(to, subject, template):
         print("error", str(e))
         flash('Error sending confirmation e-mail. Please try again later.', 'danger')
 
+def send_weather_notification_email(to, subject, template):
+    with app.app_context():
+        try:
+            msg = Message(subject, recipients=[to], html=template)
+            mail.send(msg)
+        except Exception as e:
+            print("error send_weather_notification_email", str(e))
+
+scheduler.add_job(id='send_emails_task', func=send_emails, trigger='cron', hour=8, minute=0)
 
 @app.route('/confirm/<token>', methods=['GET'])
 def confirm_email(token):
