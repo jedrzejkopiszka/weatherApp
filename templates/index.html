@@ -41,6 +41,15 @@
                             </ul>
                         </div>
                     </nav>
+                    {% with messages = get_flashed_messages(with_categories=true) %}
+                        {% if messages %}
+                            {% for category, message in messages %}
+                                <div class="alert alert-{{ category }}">
+                                    {{ message }}
+                                </div>
+                            {% endfor %}
+                        {% endif %}
+                    {% endwith %}
                     <div class="card-body">
                         <h2 class="text-center mb-4">Check Weather</h2>
                         <form id="weatherForm">
@@ -272,6 +281,45 @@
                 .catch(error => {
                     console.error('Error:', error);
                     alert('City added to your favorites!');
+                });
+            });
+
+            let oldButtonNotifications = document.getElementById("enableNotificationsBtn");
+            if (oldButtonNotifications) {
+                oldButtonNotifications.remove();  // Remove the old button
+            }
+
+            let newButtonNotifications = document.createElement('button');
+            newButtonNotifications.id = "enableNotificationsBtn";
+            newButtonNotifications.innerText = "Send e-mail notifications at 08:00AM";
+            newButtonNotifications.className = "btn btn-primary"; 
+
+            container.appendChild(newButtonNotifications);
+
+            newButtonNotifications.addEventListener('click', function() {
+                const data = {
+                    city_name: city
+                };
+                
+                fetch('/send_scheduled_notifications', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify(data)
+                })
+                .then(response => response.json())
+                .then(data => {
+                    // Here, we handle the response from the server.
+                    if (data.hasUnconfirmedEmail) {
+                        alert('Your email is not confirmed.');
+                    } else {
+                        alert('You have scheduled a weather e-mail for selected city');
+                    }
+                })
+                .catch(error => {
+                    console.error('Error:', error);
+                    alert('Some error occured');
                 });
             });
 

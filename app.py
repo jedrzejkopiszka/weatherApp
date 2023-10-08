@@ -1,4 +1,6 @@
-from flask import Flask, render_template, request, jsonify, redirect, url_for
+from flask import Flask, render_template, request, jsonify, redirect, url_for, flash
+from flask_apscheduler import APScheduler
+from flask_mail import Mail, Message
 from flask_sqlalchemy import SQLAlchemy
 from werkzeug.security import generate_password_hash, check_password_hash
 from flask_login import LoginManager, UserMixin, login_user, login_required, logout_user, current_user
@@ -11,21 +13,38 @@ import requests
 from collections import defaultdict
 from datetime import datetime, timedelta
 from dateutil.relativedelta import relativedelta
+from itsdangerous import URLSafeTimedSerializer
+import re
 
 
 app = Flask(__name__)
 
 config = configparser.ConfigParser()
 config.read('config.ini')
-app.config['SECRET_KEY'] = 'some_random_secret_key'
+app.config['SECRET_KEY'] = config['DEFAULT']['app_secret_key']
 app.config['PERMANENT_SESSION_LIFETIME'] = timedelta(minutes=5)
 app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///users.db'  # SQLite DB
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = True
 
+app.config['SCHEDULER_API_ENABLED'] = True
+app.config['SCHEDULER_TIMEZONE'] = 'utc'
+
+app.config['MAIL_SERVER'] = 'smtp.poczta.onet.pl'
+app.config['MAIL_PORT'] = 465
+app.config['MAIL_USERNAME'] = config['DEFAULT']['wp_email']
+app.config['MAIL_DEFAULT_SENDER'] = config['DEFAULT']['wp_email']
+app.config['MAIL_PASSWORD'] = config['DEFAULT']['wp_password']
+app.config['MAIL_USE_TLS'] = False
+app.config['MAIL_USE_SSL'] = True
+app.config['SECURITY_PASSWORD_SALT'] = config['DEFAULT']['SECURITY_PASSWORD_SALT']
 
 login_manager = LoginManager()
 login_manager.init_app(app)
 login_manager.login_view = 'login'
+
+scheduler = APScheduler()
+scheduler.init_app(app)
+scheduler.start()
 
 BASE_URL = "http://api.openweathermap.org/data/2.5/weather?"
 FORECAST_URL = "http://api.openweathermap.org/data/2.5/forecast?"
@@ -34,9 +53,14 @@ GEONAMES_USERNAME = config['DEFAULT']['geonames_username']
 
 db = SQLAlchemy(app)
 migrate = Migrate(app, db)
-
+mail = Mail(app)
 
 favourites = db.Table('favourites',
+    db.Column('user_id', db.Integer, db.ForeignKey('user.id'), primary_key=True),
+    db.Column('city_id', db.Integer, db.ForeignKey('city.id'), primary_key=True)
+)
+
+emails = db.Table('emails',
     db.Column('user_id', db.Integer, db.ForeignKey('user.id'), primary_key=True),
     db.Column('city_id', db.Integer, db.ForeignKey('city.id'), primary_key=True)
 )
@@ -45,7 +69,13 @@ class User(UserMixin, db.Model):
     id = db.Column(db.Integer, primary_key=True)
     username = db.Column(db.String(150), unique=True, nullable=False)
     password = db.Column(db.String(150), nullable=False)
-    favorite_cities = db.relationship('City', secondary=favourites, backref=db.backref('users', lazy='dynamic'))
+    email = db.Column(db.String(120), unique=True, nullable=False)
+    email_confirmed = db.Column(db.Boolean, nullable=False, default=False)
+    email_confirmed_on = db.Column(db.DateTime, nullable=True)
+    favorite_cities = db.relationship('City', secondary=favourites, lazy='subquery',
+                                      backref=db.backref('favourite_users', lazy=True))
+    emails_enabled = db.relationship('City', secondary=emails, lazy='subquery',
+                                     backref=db.backref('emails_enabled_users', lazy=True))
 
 class City(db.Model):
     id = db.Column(db.Integer, primary_key=True)
@@ -58,6 +88,7 @@ def load_user(user_id):
 
 class RegisterForm(FlaskForm):
     username = StringField('Username', validators=[DataRequired()])
+    email = StringField('Email', validators=[DataRequired()])
     password = PasswordField('Password', validators=[DataRequired()])
     submit = SubmitField('Register')
 
@@ -66,15 +97,27 @@ def register():
     form = RegisterForm()
     if request.method == 'POST':
         username = request.form.get('username')
+        email = request.form.get('email')
         password = request.form.get('password')
         
-        existing_user = User.query.filter_by(username=username).first()
+        existing_username = User.query.filter_by(username=username).first()
+        existing_email = User.query.filter_by(email=email).first()
 
-        if existing_user:
-            return jsonify({'status': 'failure', 'message': 'User already exists'})
+        if existing_username or existing_email:
+            return jsonify({'status': 'failure', 'message': 'User already exists or e-mail already used'})
         
+        email_verification_pattern = r"^[a-zA-Z0-9_.+-]+@[a-zA-Z0-9-]+\.[a-zA-Z0-9-.]+$"
+        if not bool(re.match(email_verification_pattern, email)):
+            return jsonify({'status': 'failure', 'message': 'E-mail not in supported format'})
+        
+        token = generate_confirmation_token(email)
+        confirm_url = url_for('confirm_email', token=token, _external=True)
+        html = render_template('email_confirmation.html', confirm_url=confirm_url)
+        subject = "Please confirm your email"
+        send_email(email, subject, html)
+
         hashed_password = generate_password_hash(password, method='sha256')
-        new_user = User(username=username, password=hashed_password)
+        new_user = User(username=username, email=email, password=hashed_password)
         db.session.add(new_user)
         db.session.commit()
         return jsonify({'status': 'success'})
@@ -136,24 +179,25 @@ def get_weather():
         return jsonify({'error': 'Unknown error occured'})
     
 def get_weather_data(city):
-    complete_url = BASE_URL + "q=" + city + "&appid=" + API_KEY
-    response = requests.get(complete_url)
-    data = response.json()
-    
-    if data.get("cod") != 404:
-        main = data.get("main", {})
-        coord = data.get("coord", {})
-        weather = data["weather"][0] if data.get("weather") else {}
-        return jsonify({
-            'city': data.get('name'),
-            'temperature': main.get("temp"),
-            'description': weather.get("description"),
-            'icon': weather.get("icon"),
-            'lon': coord.get("lon"),
-            'lat': coord.get("lat")
-        }).get_json()
-    else:
-        return jsonify({'error': 'Unknown error occured'})
+    with app.app_context():
+        complete_url = BASE_URL + "q=" + city + "&appid=" + API_KEY
+        response = requests.get(complete_url)
+        data = response.json()
+        
+        if data.get("cod") != 404:
+            main = data.get("main", {})
+            coord = data.get("coord", {})
+            weather = data["weather"][0] if data.get("weather") else {}
+            return jsonify({
+                'city': data.get('name'),
+                'temperature': main.get("temp"),
+                'description': weather.get("description"),
+                'icon': weather.get("icon"),
+                'lon': coord.get("lon"),
+                'lat': coord.get("lat")
+            }).get_json()
+        else:
+            return jsonify({'error': 'Unknown error occured'})
 
 @app.route('/get_multiple_weather', methods=['POST'])
 def get_multiple_weather():
@@ -214,6 +258,63 @@ def add_favourite():
     db.session.commit()
     return jsonify({'isFavorite': False})
 
+@app.route('/send_scheduled_notifications', methods=['POST'])
+@login_required
+def add_city_to_weather_email():
+    user_id = current_user.id
+    user = User.query.get(user_id)
+    city = request.get_json().get('city_name')
+
+    if not city:
+        return jsonify({'error': 'City name is missing'}), 400
+    
+    elif user.email_confirmed:
+        new_email_city = City.query.filter_by(name=city).first()
+        if not new_email_city:
+            new_email_city = City(name=city) 
+            db.session.add(new_email_city)
+            db.session.commit() 
+
+        city_in_emails = any(enabled_city.name == city for enabled_city in user.emails_enabled)
+        if not city_in_emails:
+            current_user.emails_enabled.append(new_email_city)
+            db.session.commit()
+            return jsonify({'hasUnconfirmedEmail': False})
+        
+        return jsonify({'error': 'E-mails already enabled for this city'}), 400
+    
+    else:
+        return jsonify({'hasUnconfirmedEmail': True})
+    
+def get_users_and_cities():
+    users = User.query.all() 
+    user_city_map = {}
+    for user in users:
+        cities = [city.name for city in user.emails_enabled] 
+        if len(cities) > 0 and user.email_confirmed:
+            user_city_map[user.email] = cities
+    return user_city_map
+
+def generate_email_body(cities):
+    email_body = f"<p>Dear User,</p><p>Here is the weather update for your cities:</p>"
+
+    for city in cities:
+        weather = get_weather_data(city)
+        if 'error' not in weather:
+            email_body += f"<p>- {weather['city']}: {weather['temperature']}°C, {weather['description']}</p>"
+        else:
+            email_body += f"<p>- Couldn't retrieve weather information for {city}</p>"
+    
+    email_body += "<p>Best regards,<br>Your WeatherApp Team</p>"
+    return email_body
+
+def send_emails():
+    user_city_map = get_users_and_cities()
+    for email, cities in user_city_map.items():
+        subject = "Your Assigned Cities"
+        body = generate_email_body(cities)
+        send_weather_notification_email(email, subject, body)
+
 @app.route('/get_local_news', methods=['POST'])
 def get_local_news():
     city = request.get_json().get('city_name')
@@ -260,6 +361,56 @@ def search_city():
     cities = [entry['name'] + ", " + entry['adminName1']+ ', ' + entry['countryName'] for entry in data['geonames']]
     
     return jsonify(cities)
+
+
+def generate_confirmation_token(email):
+    serializer = URLSafeTimedSerializer(app.config['SECRET_KEY'])
+    return serializer.dumps(email, salt=app.config['SECURITY_PASSWORD_SALT'])
+
+def confirm_token(token, expiration=3600):
+    serializer = URLSafeTimedSerializer(app.config['SECRET_KEY'])
+    try:
+        email = serializer.loads(token, salt=app.config['SECURITY_PASSWORD_SALT'], max_age=expiration)
+    except:
+        return False
+    return email
+
+def send_email(to, subject, template):
+    try:
+        msg = Message(subject, recipients=[to], html=template)
+        mail.send(msg)
+        flash('Confirmation e-mail sent successfully!', 'success')
+    except Exception as e:
+        print("error", str(e))
+        flash('Error sending confirmation e-mail. Please try again later.', 'danger')
+
+def send_weather_notification_email(to, subject, template):
+    with app.app_context():
+        try:
+            msg = Message(subject, recipients=[to], html=template)
+            mail.send(msg)
+        except Exception as e:
+            print("error send_weather_notification_email", str(e))
+
+scheduler.add_job(id='send_emails_task', func=send_emails, trigger='cron', hour=8, minute=0)
+
+@app.route('/confirm/<token>', methods=['GET'])
+def confirm_email(token):
+    try:
+        email = confirm_token(token)
+    except:
+        flash('The confirmation link is invalid or has expired.', 'danger') 
+    user = User.query.filter_by(email=email).first()
+    if user.email_confirmed:
+        flash('E-mail already confirmed', 'warning')
+    else:
+        user.email_confirmed = True
+        user.email_confirmed_on = datetime.now()
+        db.session.add(user)
+        db.session.commit()
+        flash('Thank you for confirming your email address!', 'success')
+        return redirect(url_for('index'))
+
 
 if __name__ == '__main__':
     app.run(debug=False)
