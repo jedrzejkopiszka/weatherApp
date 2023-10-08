@@ -411,6 +411,29 @@ def confirm_email(token):
         flash('Thank you for confirming your email address!', 'success')
         return redirect(url_for('index'))
 
+@app.route('/settings', methods=['GET', 'POST'])
+@login_required
+def settings():
+    if request.method == 'POST':
+        new_password = request.form.get('password')
+        
+        if new_password:
+            current_user.password = generate_password_hash(new_password, method='sha256')
+        
+        updated_favourites = request.form.getlist('favourites') 
+        current_user.favorite_cities = City.query.filter(City.id.in_(updated_favourites)).all()
+
+        updated_enabled = request.form.getlist('enabled') 
+        current_user.emails_enabled = City.query.filter(City.id.in_(updated_enabled)).all()
+
+        db.session.commit()
+        flash('Settings updated successfully!', 'success')
+        return redirect(url_for('settings')) 
+    
+    favourites = current_user.favorite_cities
+    enabled = current_user.emails_enabled
+    return render_template('settings.html', user=current_user, favourites=favourites, enabled=enabled)
+
 
 if __name__ == '__main__':
     app.run(debug=False)
