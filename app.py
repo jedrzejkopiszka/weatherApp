@@ -92,6 +92,13 @@ class RegisterForm(FlaskForm):
     password = PasswordField('Password', validators=[DataRequired()])
     submit = SubmitField('Register')
 
+def send_email_verification_email(email):
+    token = generate_confirmation_token(email)
+    confirm_url = url_for('confirm_email', token=token, _external=True)
+    html = render_template('email_confirmation.html', confirm_url=confirm_url)
+    subject = "Please confirm your email"
+    send_email(email, subject, html)
+
 @app.route('/register', methods=['GET', 'POST'])
 def register():
     form = RegisterForm()
@@ -110,11 +117,7 @@ def register():
         if not bool(re.match(email_verification_pattern, email)):
             return jsonify({'status': 'failure', 'message': 'E-mail not in supported format'})
         
-        token = generate_confirmation_token(email)
-        confirm_url = url_for('confirm_email', token=token, _external=True)
-        html = render_template('email_confirmation.html', confirm_url=confirm_url)
-        subject = "Please confirm your email"
-        send_email(email, subject, html)
+        send_email_verification_email(email)
 
         hashed_password = generate_password_hash(password, method='sha256')
         new_user = User(username=username, email=email, password=hashed_password)
@@ -410,6 +413,39 @@ def confirm_email(token):
         db.session.commit()
         flash('Thank you for confirming your email address!', 'success')
         return redirect(url_for('index'))
+
+@app.route('/settings', methods=['GET', 'POST'])
+@login_required
+def settings():
+    if request.method == 'POST':
+        new_password = request.form.get('password')
+        
+        if new_password:
+            current_user.password = generate_password_hash(new_password, method='sha256')
+        
+        updated_favourites = request.form.getlist('favourites') 
+        current_user.favorite_cities = City.query.filter(City.id.in_(updated_favourites)).all()
+
+        updated_enabled = request.form.getlist('enabled') 
+        current_user.emails_enabled = City.query.filter(City.id.in_(updated_enabled)).all()
+
+        db.session.commit()
+        flash('Settings updated successfully!', 'success')
+        return redirect(url_for('settings')) 
+    
+    favourites = current_user.favorite_cities
+    enabled = current_user.emails_enabled
+    return render_template('settings.html', user=current_user, favourites=favourites, enabled=enabled)
+
+@app.route('/send_confirmation_email', methods=['GET'])
+@login_required
+def send_confirmation_email():
+    if not current_user.email_confirmed:
+        send_email_verification_email(current_user.email)
+        flash('Confirmation email sent successfully!', 'success')
+    else:
+        flash('Email is already confirmed!', 'info')
+    return redirect(url_for('settings')) 
 
 
 if __name__ == '__main__':

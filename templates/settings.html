@@ -1,0 +1,75 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <link rel="stylesheet" href="{{ url_for('static', filename='styles.css') }}">
+    <link rel="stylesheet" href="https://maxcdn.bootstrapcdn.com/bootstrap/4.5.2/css/bootstrap.min.css">
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.7.1/dist/leaflet.css" />
+    <script src="https://unpkg.com/leaflet@1.7.1/dist/leaflet.js"></script>
+    <script src="https://ajax.googleapis.com/ajax/libs/jquery/3.5.1/jquery.min.js"></script>
+    <script src="https://maxcdn.bootstrapcdn.com/bootstrap/4.5.2/js/bootstrap.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
+    <title>User Settings</title>
+
+<body>
+    <div class="container mt-5">  
+        <div class="row">  
+            <div class="col-lg-6 mx-auto">
+                <nav class="navbar navbar-expand-lg navbar-light bg-light">
+                    <a class="navbar-brand" href="/">Weather App</a>
+                    <div class="collapse navbar-collapse" id="navbarNav">
+                        <ul class="navbar-nav ml-auto">
+                            <li class="nav-item">
+                                <a class="nav-link" href="/logout">Logout</a>
+                            </li>
+                        </ul>
+                    </div>
+                </nav>
+                <form method="POST" action="{{ url_for('settings') }}" class="p-4 rounded border">
+                    <div class="form-group">
+                        <label for="password">New Password:</label>
+                        <input type="password" id="password" name="password" class="form-control">
+                    </div>
+
+                    <div class="mt-3">
+                        {% if user.email_confirmed %}
+                            <p class="text-success">Your email is confirmed!</p>
+                        {% else %}
+                            <p class="text-danger d-inline">Your email is not confirmed! </p>
+                            <a href="{{ url_for('send_confirmation_email') }}" class="btn btn-warning btn-sm">Confirm it</a>
+                        {% endif %}
+                    </div>
+
+                    <div class="mt-3">
+                        <fieldset>
+                            <legend>Favourite Cities:</legend>
+                            {% for city1 in favourites %}
+                                <input type="checkbox" id="city1{{ city1.id }}" name="favourites" value="{{ city1.id }}"
+                                    {% if city1 in user.favorite_cities %}checked{% endif %}>
+                                <label for="city1{{ city1.id }}">{{ city1.name }}</label><br>
+                            {% endfor %}
+                        </fieldset>
+                        {% if user.email_confirmed %}
+                            <fieldset>
+                                <legend>Cities with notifications:</legend>
+                                {% for city2 in enabled %}
+                                    <input type="checkbox" id="city2{{ city2.id }}" name="enabled" value="{{ city2.id }}"
+                                        {% if city2 in user.emails_enabled %}checked{% endif %}>
+                                    <label for="city2{{ city2.id }}">{{ city2.name }}</label><br>
+                                {% endfor %}
+                            </fieldset>
+                        {% endif %}
+                    </div>
+                    <br>
+                    <button type="submit" class="btn btn-primary mx-auto d-block">Update Settings</button>
+                </form>
+                
+                <a href="{{ url_for('index') }}" class="d-block mt-3 text-center">Back to Main App</a>
+            </div>
+        </div>
+    </div>
+</body>
+
+</html>

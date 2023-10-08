@@ -2,7 +2,7 @@
 <html>
 <head>
     <title>Weather App</title>
-    <link rel="stylesheet" href="styles.css">
+    <link rel="stylesheet" href="{{ url_for('static', filename='styles.css') }}">
     <link rel="stylesheet" href="https://maxcdn.bootstrapcdn.com/bootstrap/4.5.2/css/bootstrap.min.css">
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.7.1/dist/leaflet.css" />
     <script src="https://unpkg.com/leaflet@1.7.1/dist/leaflet.js"></script>
@@ -30,6 +30,7 @@
                             <ul class="navbar-nav ml-auto">
                                 {% if current_user.is_authenticated %}
                                 <li class="nav-item">
+                                    <a class="nav-link" href="/settings">Settings</a>
                                     <a class="nav-link" href="/logout">Logout</a>
                                 </li>
                                 {% else %}
