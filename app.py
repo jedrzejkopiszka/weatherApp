@@ -24,7 +24,7 @@ config = configparser.ConfigParser()
 config.read('config.ini')
 app.config['SECRET_KEY'] = os.environ.get('app_secret_key')#, config['DEFAULT']['app_secret_key'])
 app.config['PERMANENT_SESSION_LIFETIME'] = timedelta(minutes=5)
-app.config['SQLALCHEMY_DATABASE_URI'] = os.environ.get('DATABASE_URL', config['DEFAULT']['DATABASE_URL']).replace('postgres://', 'postgresql://')
+app.config['SQLALCHEMY_DATABASE_URI'] = os.environ.get('DATABASE_URL', config['DEFAULT']['DATABASE_URL']) #.replace('postgres://', 'postgresql://')
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = True
 
 app.config['SCHEDULER_API_ENABLED'] = True
