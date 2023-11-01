@@ -84,7 +84,7 @@ class City(db.Model):
 
 @login_manager.user_loader
 def load_user(user_id):
-    return User.query.get(int(user_id))
+    return db.session.get(User, int(user_id))
 
 class RegisterForm(FlaskForm):
     username = StringField('Username', validators=[DataRequired()])
@@ -119,7 +119,7 @@ def register():
         
         send_email_verification_email(email)
 
-        hashed_password = generate_password_hash(password, method='sha256')
+        hashed_password = generate_password_hash(password)
         new_user = User(username=username, email=email, password=hashed_password)
         db.session.add(new_user)
         db.session.commit()
@@ -208,7 +208,7 @@ def get_multiple_weather():
     cities = []
     if is_logged_in:
         user_id = current_user.id
-        user = User.query.get(user_id)
+        user = db.session.get(User, user_id)
         cities = [fav_city.name for fav_city in user.favorite_cities]
     if is_logged_in == False or len(cities) == 0:
         cities = request.json.get('cities', [])
@@ -241,7 +241,7 @@ def get_forecast():
 @login_required
 def add_favourite():
     user_id = current_user.id
-    user = User.query.get(user_id)
+    user = db.session.get(User, user_id)
     city = request.get_json().get('city_name')
 
     if not city:
@@ -265,7 +265,7 @@ def add_favourite():
 @login_required
 def add_city_to_weather_email():
     user_id = current_user.id
-    user = User.query.get(user_id)
+    user = db.session.get(User, user_id)
     city = request.get_json().get('city_name')
 
     if not city:
@@ -421,7 +421,7 @@ def settings():
         new_password = request.form.get('password')
         
         if new_password:
-            current_user.password = generate_password_hash(new_password, method='sha256')
+            current_user.password = generate_password_hash(new_password)
         
         updated_favourites = request.form.getlist('favourites') 
         current_user.favorite_cities = City.query.filter(City.id.in_(updated_favourites)).all()
