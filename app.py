@@ -14,14 +14,15 @@ from collections import defaultdict
 from datetime import datetime, timedelta
 from dateutil.relativedelta import relativedelta
 from itsdangerous import URLSafeTimedSerializer
+import os
 import re
 
 
 app = Flask(__name__)
 
-config = configparser.ConfigParser()
-config.read('config.ini')
-app.config['SECRET_KEY'] = config['DEFAULT']['app_secret_key']
+#config = configparser.ConfigParser()
+#config.read('config.ini')
+app.config['SECRET_KEY'] = os.environ.get('app_secret_key')
 app.config['PERMANENT_SESSION_LIFETIME'] = timedelta(minutes=5)
 app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///users.db'  # SQLite DB
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = True
@@ -31,12 +32,12 @@ app.config['SCHEDULER_TIMEZONE'] = 'utc'
 
 app.config['MAIL_SERVER'] = 'smtp.poczta.onet.pl'
 app.config['MAIL_PORT'] = 465
-app.config['MAIL_USERNAME'] = config['DEFAULT']['wp_email']
-app.config['MAIL_DEFAULT_SENDER'] = config['DEFAULT']['wp_email']
-app.config['MAIL_PASSWORD'] = config['DEFAULT']['wp_password']
+app.config['MAIL_USERNAME'] = os.environ.get('wp_email')
+app.config['MAIL_DEFAULT_SENDER'] = os.environ.get('wp_email')
+app.config['MAIL_PASSWORD'] = os.environ.get('wp_password')
 app.config['MAIL_USE_TLS'] = False
 app.config['MAIL_USE_SSL'] = True
-app.config['SECURITY_PASSWORD_SALT'] = config['DEFAULT']['SECURITY_PASSWORD_SALT']
+app.config['SECURITY_PASSWORD_SALT'] = os.environ.get('security_password_salt')
 
 login_manager = LoginManager()
 login_manager.init_app(app)
@@ -48,8 +49,8 @@ scheduler.start()
 
 BASE_URL = "http://api.openweathermap.org/data/2.5/weather?"
 FORECAST_URL = "http://api.openweathermap.org/data/2.5/forecast?"
-API_KEY = config['DEFAULT']['api_key']
-GEONAMES_USERNAME = config['DEFAULT']['geonames_username']
+API_KEY = os.environ.get('api_key')
+GEONAMES_USERNAME = os.environ.get('geonames_username')
 
 db = SQLAlchemy(app)
 migrate = Migrate(app, db)
@@ -322,7 +323,7 @@ def send_emails():
 def get_local_news():
     city = request.get_json().get('city_name')
     news_url = "https://newsapi.org/v2/everything"
-    news_API_KEY = config['DEFAULT']['news_api_key']
+    news_API_KEY = os.environ.get('news_api_key')
 
     query = f"+{city}"
     currentTimeDate = datetime.now() - relativedelta(months=1)
