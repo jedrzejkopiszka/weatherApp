@@ -32,7 +32,7 @@ app.config['SCHEDULER_TIMEZONE'] = 'utc'
 
 app.config['MAIL_SERVER'] = 'smtp.poczta.onet.pl'
 app.config['MAIL_PORT'] = 465
-app.config['MAIL_USERNAME'] = os.environ.get('wp_email' )#, config['DEFAULT']['wp_email'])
+app.config['MAIL_USERNAME'] = os.environ.get('wp_email')#, config['DEFAULT']['wp_email'])
 app.config['MAIL_DEFAULT_SENDER'] = os.environ.get('wp_email')#, config['DEFAULT']['wp_email'])
 app.config['MAIL_PASSWORD'] = os.environ.get('wp_password')#, config['DEFAULT']['wp_password'])
 app.config['MAIL_USE_TLS'] = False
